@@ -1,0 +1,4 @@
+district_type,old_rep_districts,old_dem_districts,old_comp_districts,old_total_rep,old_total_dem,old_net_advantage,new_rep_districts,new_dem_districts,new_comp_districts,new_total_rep,new_total_dem,new_net_advantage,rep_district_change,dem_district_change,net_advantage_change
+HD,79,71,0,8954038.0,8321065.0,632973.0,84,56,10,8954038.0,8321065.0,632973.0,5,-15,0.0
+CD,23,15,0,8954038.0,8321065.0,632973.0,23,15,0,8954038.0,8321065.0,632973.0,0,0,0.0
+SD,19,12,0,8954038.0,8321065.0,632973.0,19,12,0,8954038.0,8321065.0,632973.0,0,0,0.0
