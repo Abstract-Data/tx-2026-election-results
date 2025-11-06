@@ -34,8 +34,20 @@ class Config:
     PRECINCT_LOOKUP_CD: Path = OUTPUT_DIR / "lookups" / "precinct_to_2026_cd_lookup.csv"
     PRECINCT_LOOKUP_HD: Path = OUTPUT_DIR / "lookups" / "precinct_to_2026_hd_lookup.csv"
     VISUALIZATIONS_DIR: Path = OUTPUT_DIR / "visualizations"
+    
+    # ML model paths
+    MODEL_DIR: Path = OUTPUT_DIR / "models"
+    PARTY_PREDICTION_MODEL: Path = MODEL_DIR / "party_prediction_model.pkl"
+    
+    # Analysis output paths
+    REDISTRICTING_ANALYSIS_DIR: Path = OUTPUT_DIR / "analysis" / "redistricting_impact"
+    COMPETITIVENESS_ANALYSIS_DIR: Path = OUTPUT_DIR / "analysis" / "competitiveness"
+    
+    # Competitiveness threshold
+    COMPETITIVENESS_THRESHOLD: float = 57.0
 
 
 # Global config instance
 config = Config()
+
 

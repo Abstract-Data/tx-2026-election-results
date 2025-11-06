@@ -68,15 +68,20 @@ This project analyzes how redistricting in Texas (from 2022/2024 boundaries to 2
 - **Congressional Districts (CD)**: 38 districts  
 - **House Districts (HD)**: 150 districts
 
-The analysis processes voter registration data, early voting records, and uses machine learning to model party affiliation for voters without primary voting history (~87% of voters).
+The analysis processes voter registration data, early voting records, and uses XGBoost machine learning to predict party affiliation for general-election-only voters (those with general election history but no primary history - ~95% of voters).
 
 ## Features
 
 - **Voter Data Processing**: Processes voterfile and early voting data using Polars for high-performance data manipulation
+- **Primary Voter Classification**: Classifies voters based on primary voting history (R/D/Swing/Unknown) from last 4 primaries
 - **Geospatial Analysis**: Matches voters to districts using shapefiles and precinct-level lookups
-- **Party Affiliation Modeling**: Uses Random Forest Classifier to predict party affiliation for non-primary voters
-- **Redistricting Impact Analysis**: Calculates party gains/losses across all district types
+- **Machine Learning Party Prediction**: Uses XGBoost to predict party affiliation for general-election-only voters
+- **Feature Engineering**: Creates geographic, demographic, and primary history features for ML model
+- **Redistricting Impact Analysis**: Calculates party gains/losses across all district types (CD, SD, HD)
+- **Competitiveness Analysis**: Assesses district competitiveness (Solidly R/D vs Competitive) for 2022 and 2026 maps
+- **2022 vs 2026 Comparison**: Comprehensive comparison of competitiveness changes between old and new districts
 - **Interactive Visualizations**: Creates maps and charts using Matplotlib, Seaborn, and Folium
+- **Comprehensive Reporting**: Generates detailed reports with known-only and modeled data comparisons
 - **REST API**: FastAPI-based API for accessing analysis results
 - **Interactive Reports**: Marimo notebooks for exploratory analysis
 
@@ -139,18 +144,30 @@ pip install -e .
 uv run python main.py
 ```
 
-This executes the complete analysis pipeline:
+This executes the complete analysis pipeline (15 steps):
 
-1. **Process Voterfile**: Loads and processes voter registration data
+**Data Processing (Steps 1-3):**
+1. **Process Voterfile**: Loads and processes voter registration data, calculates age brackets
 2. **Process Early Voting Data**: Processes early voting records
 3. **Merge Data**: Combines voterfile with early voting data
-4. **Load Shapefiles**: Loads district boundary shapefiles
+
+**Geospatial Processing (Steps 4-7):**
+4. **Load Shapefiles**: Loads district boundary shapefiles (2022 and 2026)
 5. **Calculate Turnout Metrics**: Computes turnout by district
-6. **Build Precinct Lookups**: Creates precinct-to-district mappings
+6. **Build Precinct Lookups**: Creates precinct-to-district mappings for CD, SD, HD
 7. **Apply Precinct Lookups**: Assigns voters to 2026 districts
-8. **Model Party Affiliation**: Predicts party for non-primary voters
-9. **Generate Reports**: Creates party gains/losses and transition reports
-10. **Generate Visualizations**: Creates maps and charts
+
+**Party Analysis (Steps 8-11):**
+8. **Calculate Party Gains/Losses**: Analyzes redistricting impact (State Senate)
+9. **Generate All District Gains/Losses**: Analyzes CD, SD, HD redistricting impacts
+10. **Generate Party Crosstab Reports**: Creates party composition reports by County/CD/SD/HD
+11. **Create Visualizations**: Creates maps and charts
+
+**ML Modeling & Enhanced Analysis (Steps 12-15):**
+12. **Classify Primary Voters**: Classifies voters as R/D/Swing/Unknown based on primary history
+13. **Train XGBoost Model**: Trains ML model on known primary voters to predict party affiliation
+14. **Predict General-Election-Only Voters**: Predicts party for voters with GEN history but no primaries
+15. **Redistricting Impact Analysis**: Generates comprehensive analysis with modeled data, competitiveness assessments, and exports
 
 ### Running Individual Components
 
@@ -160,73 +177,184 @@ See the [Analysis Components](#analysis-components) section below for details on
 
 ### Party Affiliation Modeling
 
-Models party affiliation for voters who haven't voted in primaries by comparing them to known primary voters based on geographic proximity and demographics.
+**NEW: Enhanced ML-Based Party Prediction System**
 
-#### Methodology
+The pipeline now includes a comprehensive machine learning system to predict party affiliation for general-election-only voters (those who vote in general elections but not primaries).
 
-**Features Used:**
+#### Primary Voter Classification (Step 12)
+
+First, voters are classified based on their primary voting history from the last 4 primaries (2024, 2022, 2020, 2018):
+
+- **Republican**: Voters who only voted in Republican primaries
+- **Democrat**: Voters who only voted in Democrat primaries  
+- **Swing**: Voters who voted in both R and D primaries (mixed history)
+- **Unknown**: Voters with no primary voting history
+
+#### ML Model Training (Step 13)
+
+**Model**: XGBoost Classifier
+
+**Training Data**: Only known primary voters (R/D) - typically ~850K voters (4.6% of total)
+
+**Features Used** (districts are NOT used as features):
 1. **Geographic Features:**
    - Precinct-level party composition (R/D percentages)
    - County-level party composition
    - ZIP code-level party composition (if available)
 
 2. **Demographic Features:**
-   - Age
-   - Age bracket party composition
+   - Age (numeric)
+   - Age bracket (categorical, label encoded)
+   - Age bracket party composition (R/D percentages)
 
-**Model Approach:**
-- Uses Random Forest Classifier trained on known primary voters
-- Compares unknown voters to neighbors in their precinct, county, ZIP code, and age bracket
-- Scores voters as:
-  - **Likely Republican** (≥65% Republican probability)
-  - **Lean Republican** (55-65% Republican probability)
-  - **Swing** (<55% for either party)
-  - **Lean Democrat** (55-65% Democrat probability)
-  - **Likely Democrat** (≥65% Democrat probability)
+3. **Primary History Features:**
+   - Number of Republican primary votes
+   - Number of Democrat primary votes
+   - Total primary votes
+   - Primary participation rate
+   - Primary consistency (1.0 = all same party, 0.0 = mixed)
 
-**Fallback Method:**
-If ML model cannot be trained, uses simple geographic averaging:
-- Uses precinct → ZIP → county → age bracket (in that order of preference)
-- Falls back to neutral (50/50) if no data available
+4. **Categorical Features** (label encoded):
+   - County
+   - City (RCITY)
+   - Age bracket
+
+**Model Configuration:**
+- Algorithm: XGBoost (XGBClassifier)
+- Objective: Multi-class classification (R/D)
+- Evaluation: Cross-validation with stratified splits
+- Class weights: Automatically balanced for imbalanced data
+- Typical accuracy: 70-85% on test set
+
+#### Prediction for General-Election-Only Voters (Step 14)
+
+**Target Voters**: Only voters who:
+- Have general election history (GEN columns with values)
+- Have NO primary voting history (total_primary_votes == 0)
+- Are classified as "Unknown" (no R/D/Swing classification)
+
+**Prediction Process:**
+1. Identifies general-election-only voters (~17.8M voters, 95.4% of total)
+2. Applies trained XGBoost model to predict party probabilities
+3. Maps probabilities to party scores:
+   - **Likely Republican** (≥65% Republican probability)
+   - **Lean Republican** (55-65% Republican probability)
+   - **Swing** (<55% for either party)
+   - **Lean Democrat** (55-65% Democrat probability)
+   - **Likely Democrat** (≥65% Democrat probability)
+4. Creates `party_final` column combining:
+   - Known primary classifications (R/D/Swing) for primary voters
+   - Predicted classifications for general-election-only voters
+
+**Note**: Voters with no voting history at all are not modeled and remain "Unknown"
 
 #### Usage
 
-```python
-from tx_election_results.modeling.party_affiliation import model_party_affiliation
+**Running the Full ML Pipeline:**
 
-# Model party affiliation for unknown voters
-result_df = model_party_affiliation(
-    merged_df_path="data/exports/parquet/early_voting_merged.parquet",
-    output_path="data/exports/parquet/voters_with_party_modeling.parquet",
-    use_model=True  # Set to False for simple geographic averaging
+```bash
+# Run steps 12-15 (ML modeling and analysis)
+uv run python src/scripts/run_ml_steps.py
+
+# Or run the full pipeline (steps 1-15)
+uv run python main.py
+```
+
+**Programmatic Usage:**
+
+```python
+from tx_election_results.modeling.primary_voter_classifier import classify_primary_voters
+from tx_election_results.modeling.feature_engineering import prepare_features_for_ml
+from tx_election_results.modeling.party_prediction_model import train_party_prediction_model
+from tx_election_results.modeling.predict_general_voters import (
+    predict_party_for_general_voters,
+    create_final_party_classification
 )
+
+# Step 1: Classify primary voters
+df = classify_primary_voters(df)
+
+# Step 2: Prepare features
+df_features, label_encoders, feature_columns = prepare_features_for_ml(df)
+
+# Step 3: Train model
+model, metadata = train_party_prediction_model(
+    df_features,
+    feature_columns,
+    label_encoders,
+    output_model_path="models/party_prediction_model.pkl"
+)
+
+# Step 4: Predict for general-election-only voters
+df_predicted = predict_party_for_general_voters(
+    df_features,
+    "models/party_prediction_model.pkl",
+    feature_columns
+)
+
+# Step 5: Create final classification
+df_final = create_final_party_classification(df_predicted)
 ```
 
 #### Performance
 
-- Processes ~16M unknown voters in chunks of 100K
-- Uses sampling for training (>500K voters sampled to 500K for speed)
-- Model accuracy typically 70-85% on test set
+- **Feature Engineering**: Processes all 18.6M voters to calculate geographic features (~10-30 minutes)
+- **Model Training**: Trains on ~850K known primary voters (~5-15 minutes)
+- **Prediction**: Predicts for ~17.8M general-election-only voters in chunks (~10-20 minutes)
+- **Total Runtime**: ~30-60 minutes for full ML pipeline
+- **Model Accuracy**: Typically 70-85% on test set
 
 #### Output
 
 The output DataFrame includes:
-- `predicted_rep_prob`: Probability of being Republican (0-1)
-- `predicted_dem_prob`: Probability of being Democrat (0-1)
+- `primary_classification`: R/D/Swing/Unknown based on primary history
+- `predicted_rep_prob`: Probability of being Republican (0-1) for general-election-only voters
+- `predicted_dem_prob`: Probability of being Democrat (0-1) for general-election-only voters
 - `predicted_party_score`: Categorical score (Likely/Lean R, Swing, Lean/Likely D)
-- `party_final`: Final party assignment (uses known party if available, otherwise predicted)
+- `party_final`: Final party assignment combining known and predicted classifications
+
+### Competitiveness Analysis
+
+**NEW: Comprehensive Competitiveness Assessment**
+
+The pipeline now includes detailed competitiveness analysis comparing 2022 and 2026 district maps.
+
+#### Methodology
+
+**Competitiveness Classification:**
+- **Solidly Republican**: ≥57% of known party voters are Republican
+- **Solidly Democrat**: ≥57% of known party voters are Democrat
+- **Competitive**: <57% for both parties (neither party has a clear majority)
+
+**Note**: Percentages are calculated based on known party voters (R+D) only, excluding Swing and Unknown voters.
+
+#### 2022 vs 2026 Comparison
+
+The analysis compares:
+- Number of competitive districts in 2022 vs 2026
+- Number of solidly R/D districts in 2022 vs 2026
+- Net changes in competitiveness categories
+- District-by-district breakdown of changes
+
+#### Output
+
+Generates competitiveness reports for each district type:
+- `data/exports/analysis/competitiveness/{cd/sd/hd}_competitiveness_2022.csv`
+- `data/exports/analysis/competitiveness/{cd/sd/hd}_competitiveness_2026.csv`
+- `data/exports/analysis/competitiveness/{cd/sd/hd}_competitiveness_comparison.csv`
 
 ### Known vs Modeled Voters Comparison
 
 This component provides a direct comparison between:
-1. **Analysis based ONLY on known primary voters** (what we know for certain)
-2. **Analysis including modeled non-primary voters** (what we predict based on demographics and geography)
+1. **Analysis based ONLY on known primary voters** (what we know for certain - 4.6% of voters)
+2. **Analysis including modeled general-election-only voters** (what we predict - adds ~17.8M voters, 95.4% of total)
 
 #### Why This Matters
 
-- **Only ~12.7% of voters** have voted in primaries (known party affiliation)
-- **~87.3% of voters** have no primary voting history (unknown party affiliation)
-- This comparison shows how including modeled voters changes the party advantage analysis
+- **Only ~4.6% of voters** (853K) have voted in primaries (known party affiliation)
+- **~95.4% of voters** (17.8M) have no primary voting history
+- **~17.8M voters** have general election history but no primary history (can be modeled)
+- This comparison shows how including modeled voters changes competitiveness assessments and party composition
 
 #### Usage
 
@@ -335,23 +463,49 @@ data/exports/
 │   ├── party_gains_losses_by_district.csv
 │   ├── sd_gains_losses_summary.csv
 │   ├── cd_gains_losses_summary.csv
-│   └── hd_gains_losses_summary.csv
+│   ├── hd_gains_losses_summary.csv
+│   ├── voter_classifications.csv
+│   └── all_districts_comprehensive_summary.csv
 ├── parquet/                    # Processed data files
 │   ├── processed_voterfile.parquet
 │   ├── processed_early_voting.parquet
 │   ├── early_voting_merged.parquet
-│   └── voters_with_party_modeling.parquet
+│   └── voters_with_party_modeling.parquet  # With ML predictions
+├── models/                     # ML models
+│   ├── party_prediction_model.pkl
+│   └── party_prediction_model.metadata.joblib
 ├── visualizations/             # Charts and maps
 │   ├── turnout_2022_congressional.png
 │   ├── turnout_2022_senate.png
 │   ├── turnout_2026.png
 │   ├── party_gains_losses_barchart.png
+│   ├── party_composition_comparison.png
+│   ├── democrat_gains_losses_map.png
+│   ├── republican_gains_losses_map.png
 │   └── ...
 ├── districts/                  # District-specific results
 │   ├── sd_districts/
+│   │   ├── party_composition_old_districts.csv
+│   │   ├── party_composition_new_districts.csv
+│   │   └── party_gains_losses_by_district.csv
 │   ├── cd_districts/
+│   │   ├── party_composition_old_districts.csv
+│   │   ├── party_composition_new_districts.csv
+│   │   └── party_gains_losses_by_district.csv
 │   └── hd_districts/
+│       ├── party_composition_old_districts.csv
+│       ├── party_composition_new_districts.csv
+│       └── party_gains_losses_by_district.csv
 └── analysis/                   # Detailed analysis outputs
+    ├── redistricting_impact/   # Redistricting analysis with modeled data
+    │   ├── cd_redistricting_impact.csv
+    │   ├── sd_redistricting_impact.csv
+    │   └── hd_redistricting_impact.csv
+    ├── competitiveness/        # Competitiveness analysis
+    │   ├── cd_competitiveness_2022.csv
+    │   ├── cd_competitiveness_2026.csv
+    │   ├── cd_competitiveness_comparison.csv
+    │   └── (similar for sd and hd)
     ├── known_vs_modeled_comparison/
     ├── 2022_vs_2026_comparisons/
     └── ...
@@ -370,14 +524,45 @@ Configure data paths in `src/tx_election_results/config.py`.
 
 ## Methodology
 
+### Primary Voter Classification
+
+Voters are classified based on their primary voting history from the last 4 primaries:
+
+1. Count Republican primary votes (PRI24, PRI22, PRI20, PRI18 where party = "RE")
+2. Count Democrat primary votes (PRI24, PRI22, PRI20, PRI18 where party = "DE")
+3. Classify:
+   - **Republican**: rep_votes > 0 AND dem_votes == 0
+   - **Democrat**: dem_votes > 0 AND rep_votes == 0
+   - **Swing**: rep_votes > 0 AND dem_votes > 0 (mixed history)
+   - **Unknown**: rep_votes == 0 AND dem_votes == 0 (no primary history)
+
+### ML Feature Engineering
+
+Features are calculated for all voters to enable predictions:
+
+1. **Geographic Features**: Party composition at precinct, county, and ZIP levels
+2. **Demographic Features**: Age and age bracket party composition
+3. **Primary History Features**: Vote counts, participation rates, consistency
+4. **Categorical Encoding**: County, City, Age bracket (label encoded)
+
+**Note**: Districts (CD, SD, HD) are explicitly NOT used as features to avoid data leakage.
+
+### Party Prediction Model
+
+1. **Training**: XGBoost trained on known primary voters (R/D only, ~850K voters)
+2. **Target**: General-election-only voters (have GEN history, no primary history, ~17.8M voters)
+3. **Prediction**: Generates probabilities and categorical scores (Likely/Lean R, Swing, Lean/Likely D)
+4. **Final Classification**: Combines known primary classifications with ML predictions
+
 ### Party Gains/Losses Calculation
 
 For each new district, the analysis calculates:
 
-1. **Old District Composition**: Party breakdown of voters in old districts
-2. **New District Composition**: Party breakdown of voters in new districts
-3. **Net Changes**: Difference between new and old compositions
-4. **Weighted Averages**: Accounts for contributions from multiple old districts
+1. **Old District Composition**: Party breakdown of voters in old districts (2022 boundaries)
+2. **New District Composition**: Party breakdown of voters in new districts (2026 boundaries)
+3. **Expected Composition**: Weighted average from contributing old districts
+4. **Net Changes**: Difference between actual new composition and expected composition
+5. **Known vs Modeled Breakdown**: Separates known primary voters from ML-predicted voters
 
 ### Turnout Metrics
 
@@ -387,12 +572,64 @@ Calculates turnout rates by:
 - Party composition
 - Geographic region
 
+### Competitiveness Assessment
+
+**Threshold**: 57% of known party voters (R+D only)
+
+**Classification Logic**:
+- Calculate Republican percentage: `R / (R + D) * 100`
+- Calculate Democrat percentage: `D / (R + D) * 100`
+- Classify:
+  - **Solidly Republican**: rep_pct ≥ 57%
+  - **Solidly Democrat**: dem_pct ≥ 57%
+  - **Competitive**: Both < 57%
+
+**Comparison**: Calculates competitiveness for both 2022 and 2026 maps, showing net changes in each category.
+
 ### Spatial Matching
 
 Uses a combination of:
-- Precinct-level lookups (preferred)
+- Precinct-level lookups (preferred): Spatial intersection of precinct and district shapefiles
+- For split precincts: Assigns to district with largest overlap area
 - Geospatial point-in-polygon matching (fallback)
 - Address geocoding (when needed)
+
+## Recent Enhancements
+
+### ML-Based Party Prediction (Steps 12-15)
+
+**New Features:**
+- Primary voter classification based on last 4 primaries
+- XGBoost model training on known primary voters
+- Feature engineering with geographic, demographic, and primary history features
+- Prediction for general-election-only voters (~17.8M voters)
+- Comprehensive competitiveness analysis (2022 vs 2026)
+- Enhanced redistricting impact analysis with modeled data
+
+**Key Improvements:**
+- More accurate party predictions using ML instead of simple geographic averaging
+- Only models voters with general election history (not all unknown voters)
+- Separates known vs modeled voters in all analysis outputs
+- Competitiveness analysis with 2022 vs 2026 comparisons
+- District-by-district breakdown tables in reports
+
+**Output Files:**
+- `voters_with_party_modeling.parquet`: Full dataset with ML predictions
+- `party_prediction_model.pkl`: Trained XGBoost model
+- Competitiveness comparison CSVs for each district type
+- Enhanced redistricting impact reports with known/modeled breakdown
+
+### Running Just ML Steps
+
+To run only the ML modeling steps (12-15) after data processing is complete:
+
+```bash
+# Run ML pipeline steps
+uv run python src/scripts/run_ml_steps.py
+
+# Or use the status checker to monitor progress
+bash check_ml_status.sh
+```
 
 ## API
 

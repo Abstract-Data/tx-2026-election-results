@@ -9,3 +9,4 @@ __all__ = [
     "merge_voter_data",
 ]
 
+

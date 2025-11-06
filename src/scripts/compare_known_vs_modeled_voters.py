@@ -61,7 +61,7 @@ def analyze_with_and_without_modeled(
             print("⚠️  Modeled data exists but no predicted_party_score column found")
     else:
         print("⚠️  No modeled data found - will analyze with known voters only")
-        print("   To generate modeled data, run: uv run python model_party_affiliation.py")
+        print("   To generate modeled data, run: uv run python src/scripts/run_ml_steps.py")
     
     # Analyze WITHOUT modeled voters (known primary voters only)
     print(f"\n{'='*100}")

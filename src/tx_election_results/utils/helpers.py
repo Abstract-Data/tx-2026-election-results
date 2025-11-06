@@ -212,3 +212,4 @@ def create_district_type_aggregation(
     
     return aggregation.to_pandas()
 
+

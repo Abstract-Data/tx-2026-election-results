@@ -771,6 +771,15 @@ wheels = [
 ]
 
 [[package]]
+name = "nvidia-nccl-cu12"
+version = "2.28.7"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/86/72/6e99e62b10ffa94df192e9dac5aeb01091f3bf8b94a7a949299f7b8ead3a/nvidia_nccl_cu12-2.28.7-py3-none-manylinux_2_18_aarch64.whl", hash = "sha256:391a53ca3036972fc059c2977bdf34f982c8f5259d5264d10756b11f5cb41e0c", size = 296739280, upload-time = "2025-10-21T23:16:18.575Z" },
+    { url = "https://files.pythonhosted.org/packages/73/61/fa7a709b3f2d57038d99c220eba816b21466567835e4d46300ff674ed975/nvidia_nccl_cu12-2.28.7-py3-none-manylinux_2_18_x86_64.whl", hash = "sha256:29ea236d02fd57ea5f14537e95985d190c6ca067a1eba2e2b319deebdd6ccdc3", size = 296754692, upload-time = "2025-10-21T23:16:36.653Z" },
+]
+
+[[package]]
 name = "packaging"
 version = "25.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1549,6 +1558,7 @@ dependencies = [
     { name = "geopandas" },
     { name = "geopy" },
     { name = "greenlet" },
+    { name = "joblib" },
     { name = "matplotlib" },
     { name = "pandas" },
     { name = "polars" },
@@ -1561,6 +1571,7 @@ dependencies = [
     { name = "sqlmodel" },
     { name = "tqdm" },
     { name = "uvicorn", extra = ["standard"] },
+    { name = "xgboost" },
 ]
 
 [package.metadata]
@@ -1572,6 +1583,7 @@ requires-dist = [
     { name = "geopandas", specifier = ">=0.14.0" },
     { name = "geopy", specifier = ">=2.4.0" },
     { name = "greenlet", specifier = ">=3.0.0" },
+    { name = "joblib", specifier = ">=1.3.0" },
     { name = "matplotlib", specifier = ">=3.8.0" },
     { name = "pandas", specifier = ">=2.0.0" },
     { name = "polars", specifier = ">=1.35.1" },
@@ -1584,6 +1596,7 @@ requires-dist = [
     { name = "sqlmodel", specifier = ">=0.0.14" },
     { name = "tqdm", specifier = ">=4.66.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.24.0" },
+    { name = "xgboost", specifier = ">=2.0.0" },
 ]
 
 [[package]]
@@ -1780,6 +1793,24 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/86/eb/20b6cdf273913d0ad05a6a14aed4b9a85591c18a987a3d47f20fa13dcc47/websockets-15.0.1-cp313-cp313-win32.whl", hash = "sha256:ba9e56e8ceeeedb2e080147ba85ffcd5cd0711b89576b83784d8605a7df455fa", size = 176393, upload-time = "2025-03-05T20:02:53.814Z" },
     { url = "https://files.pythonhosted.org/packages/1b/6c/c65773d6cab416a64d191d6ee8a8b1c68a09970ea6909d16965d26bfed1e/websockets-15.0.1-cp313-cp313-win_amd64.whl", hash = "sha256:e09473f095a819042ecb2ab9465aee615bd9c2028e4ef7d933600a8401c79561", size = 176837, upload-time = "2025-03-05T20:02:55.237Z" },
     { url = "https://files.pythonhosted.org/packages/fa/a8/5b41e0da817d64113292ab1f8247140aac61cbf6cfd085d6a0fa77f4984f/websockets-15.0.1-py3-none-any.whl", hash = "sha256:f7a866fbc1e97b5c617ee4116daaa09b722101d4a3c170c787450ba409f9736f", size = 169743, upload-time = "2025-03-05T20:03:39.41Z" },
+]
+
+[[package]]
+name = "xgboost"
+version = "3.1.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+    { name = "nvidia-nccl-cu12", marker = "platform_machine != 'aarch64' and sys_platform == 'linux'" },
+    { name = "scipy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e3/e2/4de8c1b0d80c309f973110311b1d9759b15066ad186fbea656819cbeec6a/xgboost-3.1.1.tar.gz", hash = "sha256:47fbf190a3804d5a8c25188781f8f5412a5724ea3a0604d29d4af4b3120ffa6b", size = 1237217, upload-time = "2025-10-21T23:12:51.445Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/68/70/57ac2bc1078b497c562527dc89709db4f6d489676927c2331d9b47ab6bea/xgboost-3.1.1-py3-none-macosx_10_15_x86_64.whl", hash = "sha256:a51a2e488102a007b8c222d58bf855415002e8cdf06d104eea24b08dbf4eec4f", size = 2377615, upload-time = "2025-10-21T23:08:33.851Z" },
+    { url = "https://files.pythonhosted.org/packages/af/7f/c8bde020171c900fcc808a16fe643c16d5ef96fd1516a24478bc54a428b0/xgboost-3.1.1-py3-none-macosx_12_0_arm64.whl", hash = "sha256:fac06c989f2cf11af7aa546b3bb78e7fa87595891e5dfde28edf3e7492e5440a", size = 2210835, upload-time = "2025-10-21T23:08:54.084Z" },
+    { url = "https://files.pythonhosted.org/packages/22/87/731d92a92aa848d0bf47ac55925d93f2c34fc3843e80f2e952b34c209888/xgboost-3.1.1-py3-none-manylinux_2_28_aarch64.whl", hash = "sha256:4347671aa8a495595f17135171aeae5f6d9ab4b4e7b02f191864cf2202e3c902", size = 4952406, upload-time = "2025-10-21T23:10:39.009Z" },
+    { url = "https://files.pythonhosted.org/packages/56/b0/e3efafd9c97ed931f6453bd71aa8feaffc9217e6121af65fda06cf32f608/xgboost-3.1.1-py3-none-manylinux_2_28_x86_64.whl", hash = "sha256:405e48a201495fe9474f7aa27419f937794726a1bc7d2c2f3208b351c816580a", size = 115884000, upload-time = "2025-10-21T23:11:59.974Z" },
+    { url = "https://files.pythonhosted.org/packages/b8/90/f082b89dd74da8ca27f8a3c7b3e38fc8529a4a14eb2c5b0937c7d66aa922/xgboost-3.1.1-py3-none-win_amd64.whl", hash = "sha256:2e1067489688ad99a410e8f2acdfe9d21a299c2f3b4b25dc8f094eae709c7447", size = 71978587, upload-time = "2025-10-21T23:09:50.488Z" },
 ]
 
 [[package]]

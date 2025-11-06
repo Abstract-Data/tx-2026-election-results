@@ -211,25 +211,116 @@ def main():
         output_dir=str(config.VISUALIZATIONS_DIR)
     )
     
-    # Step 12: Model party affiliation for voters without primary voting history
-    print("\n[Step 12/12] Modeling party affiliation for voters without primary history...")
+    # Step 12: Classify primary voters
+    print("\n[Step 12/15] Classifying primary voters...")
     print("-" * 80)
-    print("NOTE: This step uses FULL ML mode (slow but accurate).")
-    print("It models ~16M voters using Random Forest with 200 trees.")
-    print("Expected time: 20-40 minutes with progress visualization.")
-    print()
+    from tx_election_results.modeling.primary_voter_classifier import classify_primary_voters
+    merged_df = classify_primary_voters(merged_df)
+    merged_df.write_parquet(str(config.MERGED_DATA))
+    
+    # Step 13: Prepare features and train ML model
+    print("\n[Step 13/15] Training XGBoost model for party prediction...")
+    print("-" * 80)
+    from tx_election_results.modeling.feature_engineering import prepare_features_for_ml
+    from tx_election_results.modeling.party_prediction_model import train_party_prediction_model
+    
+    # Prepare features
+    merged_df_features, label_encoders, feature_columns = prepare_features_for_ml(merged_df)
+    
+    # Train model
+    config.MODEL_DIR.mkdir(parents=True, exist_ok=True)
     try:
-        modeled_df = model_party_affiliation(
-            merged_df_path=str(config.MERGED_DATA),
-            output_path=str(config.MODELED_DATA),
-            use_model=True,
-            fast_mode=False  # Full ML mode for accuracy
+        model, metadata = train_party_prediction_model(
+            merged_df_features,
+            feature_columns,
+            label_encoders,
+            output_model_path=str(config.PARTY_PREDICTION_MODEL)
         )
-        print(f"\n✅ Party modeling complete! Results saved to {config.MODELED_DATA}")
+        print(f"\n✅ Model training complete! Model saved to {config.PARTY_PREDICTION_MODEL}")
     except Exception as e:
-        print(f"\n⚠️  Party modeling failed: {e}")
-        print("Continuing without party modeling...")
-        modeled_df = merged_df
+        print(f"\n⚠️  Model training failed: {e}")
+        print("Continuing without ML predictions...")
+        model = None
+    
+    # Step 14: Predict party for general-election-only voters
+    print("\n[Step 14/15] Predicting party for general-election-only voters...")
+    print("-" * 80)
+    if model is not None:
+        from tx_election_results.modeling.predict_general_voters import (
+            predict_party_for_general_voters,
+            create_final_party_classification
+        )
+        try:
+            merged_df_predicted = predict_party_for_general_voters(
+                merged_df_features,
+                str(config.PARTY_PREDICTION_MODEL),
+                feature_columns
+            )
+            merged_df_final = create_final_party_classification(merged_df_predicted)
+            merged_df_final.write_parquet(str(config.MODELED_DATA))
+            print(f"\n✅ Prediction complete! Results saved to {config.MODELED_DATA}")
+            analysis_df = merged_df_final
+        except Exception as e:
+            print(f"\n⚠️  Prediction failed: {e}")
+            print("Using primary classifications only...")
+            from tx_election_results.modeling.predict_general_voters import create_final_party_classification
+            merged_df_final = create_final_party_classification(merged_df)
+            merged_df_final.write_parquet(str(config.MODELED_DATA))
+            analysis_df = merged_df_final
+    else:
+        print("Skipping prediction (no trained model available)")
+        from tx_election_results.modeling.predict_general_voters import create_final_party_classification
+        merged_df_final = create_final_party_classification(merged_df)
+        merged_df_final.write_parquet(str(config.MODELED_DATA))
+        analysis_df = merged_df_final
+    
+    # Step 15: Redistricting impact analysis and exports
+    print("\n[Step 15/15] Running redistricting impact analysis and exports...")
+    print("-" * 80)
+    from tx_election_results.analysis.export_redistricting_data import export_all_redistricting_data
+    from tx_election_results.analysis.redistricting_impact import analyze_all_district_types
+    from tx_election_results.analysis.competitiveness import assess_all_district_types
+    from tx_election_results.visualization.redistricting_visualizations import create_all_redistricting_visualizations
+    
+    # Export all data
+    export_results = export_all_redistricting_data(
+        analysis_df,
+        str(config.OUTPUT_DIR),
+        party_col='party_final',
+        threshold=config.COMPETITIVENESS_THRESHOLD
+    )
+    
+    # Get redistricting and competitiveness results for visualizations
+    redistricting_results = analyze_all_district_types(
+        analysis_df,
+        party_col='party_final',
+        output_dir=str(config.REDISTRICTING_ANALYSIS_DIR)
+    )
+    
+    competitiveness_results = assess_all_district_types(
+        analysis_df,
+        party_col='party_final',
+        threshold=config.COMPETITIVENESS_THRESHOLD,
+        output_dir=str(config.COMPETITIVENESS_ANALYSIS_DIR)
+    )
+    
+    # Create visualizations
+    shapefile_paths = {
+        '2026_CD': config.SHAPEFILE_2024_CD,
+        '2026_SD': config.SHAPEFILE_2024_SD,
+        '2026_HD': config.SHAPEFILE_2024_HD,
+        '2022_CD': config.SHAPEFILE_2022_CD,
+        '2022_SD': config.SHAPEFILE_2022_SD,
+    }
+    
+    create_all_redistricting_visualizations(
+        redistricting_results,
+        competitiveness_results,
+        shapefile_paths,
+        str(config.VISUALIZATIONS_DIR)
+    )
+    
+    print(f"\n✅ Redistricting analysis complete!")
     
     # Summary
     print("\n" + "=" * 80)
@@ -240,6 +331,7 @@ def main():
     print(f"  - Processed early voting: {config.PROCESSED_EARLY_VOTING}")
     print(f"  - Merged data: {config.MERGED_DATA}")
     print(f"  - Modeled party affiliation: {config.MODELED_DATA}")
+    print(f"  - ML Model: {config.PARTY_PREDICTION_MODEL}")
     print(f"  - Precinct-to-2026-district lookups:")
     print(f"      * SD: {config.PRECINCT_LOOKUP_SD}")
     print(f"      * CD: {config.PRECINCT_LOOKUP_CD}")
@@ -252,12 +344,20 @@ def main():
     print(f"      * HD: {config.OUTPUT_DIR / 'districts' / 'hd_districts/'}")
     print(f"  - Party transition report: {config.OUTPUT_DIR / 'csv' / 'party_transition_*.csv'}")
     print(f"  - Party crosstab reports: {config.OUTPUT_DIR / 'csv' / 'party_by_county*.csv'}, {config.OUTPUT_DIR / 'csv' / 'party_gains_losses_by_county*.csv'}")
+    print(f"  - Redistricting analysis: {config.REDISTRICTING_ANALYSIS_DIR}")
+    print(f"  - Competitiveness analysis: {config.COMPETITIVENESS_ANALYSIS_DIR}")
+    print(f"  - Voter classifications: {config.OUTPUT_DIR / 'csv' / 'voter_classifications.csv'}")
     print(f"  - Visualizations: {config.VISUALIZATIONS_DIR} /")
     
     print("\nSummary Statistics:")
     print(f"  - Total voters processed: {len(merged_df):,}")
     print(f"  - Early voters: {merged_df['voted_early'].sum():,}")
     print(f"  - Early voting rate: {merged_df['voted_early'].mean() * 100:.2f}%")
+    
+    if 'party_final' in analysis_df.columns:
+        print(f"\nParty Classification:")
+        party_counts = analysis_df.group_by('party_final').agg(pl.count()).sort('party_final')
+        print(party_counts)
     
     print("\n" + "=" * 80)
 

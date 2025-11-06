@@ -19,3 +19,4 @@ __all__ = [
     "generate_party_crosstab_report",
 ]
 
+
