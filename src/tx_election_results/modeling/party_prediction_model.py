@@ -18,6 +18,7 @@ except ImportError:
 
 from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
+from sklearn.preprocessing import LabelEncoder
 from tqdm import tqdm
 
 from tx_election_results.modeling.feature_engineering import prepare_features_for_ml
@@ -92,6 +93,13 @@ def train_party_prediction_model(
     # Separate features and target
     X = train_pd[feature_columns].copy()
     y = train_pd['primary_classification'].copy()
+
+    # Encode target labels for XGBoost (requires numeric classes)
+    print("\nEncoding target labels...")
+    target_encoder = LabelEncoder()
+    y_encoded = target_encoder.fit_transform(y)
+    target_classes = list(target_encoder.classes_)
+    print(f"Target classes: {target_classes}")
     
     # Fill missing values
     print("Handling missing values...")
@@ -106,19 +114,20 @@ def train_party_prediction_model(
     
     # Split into train and test sets
     print(f"\nSplitting data (test_size={test_size})...")
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=test_size, random_state=random_state, stratify=y
+    X_train, X_test, y_train_encoded, y_test_encoded = train_test_split(
+        X, y_encoded, test_size=test_size, random_state=random_state, stratify=y_encoded
     )
     
     print(f"Training set: {len(X_train):,} samples")
     print(f"Test set: {len(X_test):,} samples")
     
     # Calculate class weights for imbalanced data
-    class_counts = y_train.value_counts()
-    total_samples = len(y_train)
+    class_counts = pd.Series(y_train_encoded).value_counts()
+    total_samples = len(y_train_encoded)
     class_weights = {}
-    for class_name in class_counts.index:
-        class_weights[class_name] = total_samples / (len(class_counts) * class_counts[class_name])
+    for class_idx, count in class_counts.items():
+        class_label = target_classes[int(class_idx)]
+        class_weights[class_label] = total_samples / (len(class_counts) * count)
     
     print(f"\nClass weights: {class_weights}")
     
@@ -155,8 +164,8 @@ def train_party_prediction_model(
     # Fit with progress callback
     print("  Training...")
     model.fit(
-        X_train, y_train,
-        eval_set=[(X_test, y_test)],
+        X_train, y_train_encoded,
+        eval_set=[(X_test, y_test_encoded)],
         verbose=False
     )
     
@@ -166,12 +175,18 @@ def train_party_prediction_model(
     print("\nEvaluating model...")
     
     # Predictions
-    y_train_pred = model.predict(X_train)
-    y_test_pred = model.predict(X_test)
+    y_train_pred_encoded = model.predict(X_train)
+    y_test_pred_encoded = model.predict(X_test)
+
+    # Convert encoded labels back to original class names for reporting
+    y_train_true = target_encoder.inverse_transform(y_train_encoded)
+    y_test_true = target_encoder.inverse_transform(y_test_encoded)
+    y_train_pred = target_encoder.inverse_transform(y_train_pred_encoded)
+    y_test_pred = target_encoder.inverse_transform(y_test_pred_encoded)
     
     # Accuracy
-    train_accuracy = accuracy_score(y_train, y_train_pred)
-    test_accuracy = accuracy_score(y_test, y_test_pred)
+    train_accuracy = accuracy_score(y_train_true, y_train_pred)
+    test_accuracy = accuracy_score(y_test_true, y_test_pred)
     
     print(f"\nModel Accuracy:")
     print(f"  Training: {train_accuracy:.4f}")
@@ -179,12 +194,12 @@ def train_party_prediction_model(
     
     # Classification report
     print("\nClassification Report (Test Set):")
-    print(classification_report(y_test, y_test_pred))
+    print(classification_report(y_test_true, y_test_pred, target_names=target_classes))
     
     # Confusion matrix
     print("\nConfusion Matrix (Test Set):")
-    cm = confusion_matrix(y_test, y_test_pred)
-    print(cm)
+    cm = confusion_matrix(y_test_true, y_test_pred, labels=target_classes)
+    print(pd.DataFrame(cm, index=target_classes, columns=target_classes))
     
     # Feature importance
     print("\nTop 10 Most Important Features:")
@@ -196,13 +211,14 @@ def train_party_prediction_model(
     
     # Cross-validation score
     print("\nPerforming cross-validation...")
-    cv_scores = cross_val_score(model, X_train, y_train, cv=5, scoring='accuracy')
+    cv_scores = cross_val_score(model, X_train, y_train_encoded, cv=5, scoring='accuracy')
     print(f"Cross-validation accuracy: {cv_scores.mean():.4f} (+/- {cv_scores.std() * 2:.4f})")
     
     # Prepare metadata
     metadata = {
         'feature_columns': feature_columns,
         'label_encoders': label_encoders,
+        'target_classes': target_classes,
         'train_accuracy': float(train_accuracy),
         'test_accuracy': float(test_accuracy),
         'cv_accuracy_mean': float(cv_scores.mean()),

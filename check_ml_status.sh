@@ -8,10 +8,16 @@ echo "Time: $(date)"
 echo ""
 
 # Check if process is running - get the actual python process, not the shell
-PROCESS_INFO=$(ps aux | grep "python.*run_new_steps\|python.*run_ml_steps\|src/scripts/run" | grep -v grep | head -1)
+# Look for processes running the ML pipeline scripts (old and new locations)
+PROCESS_INFO=$(ps aux | grep -E "python.*run_new_steps|python.*run_ml_steps|python.*src/scripts/run|uv run.*run_ml|uv run.*run_new" | grep -v grep | head -1)
 if [ -z "$PROCESS_INFO" ]; then
-    # Try alternative pattern
-    PROCESS_INFO=$(ps aux | grep "run_new_steps.py\|run_ml_steps.py" | grep -v grep | head -1)
+    # Try alternative patterns - look for script names in command line
+    PROCESS_INFO=$(ps aux | grep -E "run_new_steps\.py|run_ml_steps\.py" | grep -v grep | head -1)
+fi
+if [ -z "$PROCESS_INFO" ]; then
+    # Try looking for processes with high CPU that might be the ML pipeline
+    # (ML processes typically use high CPU during feature engineering/training)
+    PROCESS_INFO=$(ps aux | awk '$3 > 50 && /python/ && /run/ {print}' | grep -v grep | head -1)
 fi
 
 if [ -n "$PROCESS_INFO" ]; then
@@ -21,10 +27,14 @@ if [ -n "$PROCESS_INFO" ]; then
     MEM=$(echo "$PROCESS_INFO" | awk '{print $4}')
     TIME_STR=$(echo "$PROCESS_INFO" | awk '{print $10}')
     
+    # Extract full command for verification
+    COMMAND=$(echo "$PROCESS_INFO" | awk '{for(i=11;i<=NF;i++) printf "%s ", $i; print ""}' | sed 's/ $//')
+    
     echo "  PID: $PID"
     echo "  CPU: ${CPU}%"
     echo "  MEM: ${MEM}%"
     echo "  Runtime: $TIME_STR"
+    echo "  Command: $COMMAND"
     
     # Parse TIME_STR (format: MM:SS.SS or HH:MM:SS.SS)
     ELAPSED_SECONDS=0

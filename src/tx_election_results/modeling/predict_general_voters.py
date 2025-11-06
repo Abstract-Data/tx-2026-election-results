@@ -88,6 +88,7 @@ def predict_party_for_general_voters(
     
     # Load model
     model, metadata = load_party_prediction_model(model_path)
+    target_classes = metadata.get('target_classes')
     
     # Identify general-election-only voters
     df = identify_general_election_voters(df)
@@ -139,24 +140,33 @@ def predict_party_for_general_voters(
             pbar.set_description(f"Predicting chunk {chunk_num}/{total_chunks}")
             proba = model.predict_proba(chunk)
             
-            # Get class order
+            # Get class order (convert encoded classes back to labels if needed)
             class_order = model.classes_
-            if len(class_order) == 2:
-                # Binary classification: R and D
-                if class_order[0] == 'Democrat':
-                    dem_idx, rep_idx = 0, 1
-                else:
-                    dem_idx, rep_idx = 1, 0
+            if target_classes:
+                class_order_labels = []
+                for cls in class_order:
+                    if isinstance(cls, (np.integer, int, np.int64, np.int32)):
+                        class_order_labels.append(target_classes[int(cls)])
+                    else:
+                        class_order_labels.append(str(cls))
             else:
-                # Multi-class: find indices
-                dem_idx = np.where(class_order == 'Democrat')[0][0] if 'Democrat' in class_order else 0
-                rep_idx = np.where(class_order == 'Republican')[0][0] if 'Republican' in class_order else 1
+                class_order_labels = [str(cls) for cls in class_order]
+
+            # Determine indices for Republican and Democrat probabilities
+            if 'Democrat' in class_order_labels:
+                dem_idx = class_order_labels.index('Democrat')
+            else:
+                dem_idx = 0
+            if 'Republican' in class_order_labels:
+                rep_idx = class_order_labels.index('Republican')
+            else:
+                rep_idx = 1 if len(class_order_labels) > 1 else 0
             
             # Store predictions
             chunk_predictions = pd.DataFrame({
                 'VUID': predict_pd['VUID'].iloc[i:i+chunk_size].values,
-                'predicted_party_prob_rep': proba[:, rep_idx],
-                'predicted_party_prob_dem': proba[:, dem_idx],
+                'predicted_party_prob_rep': proba[:, rep_idx] if proba.shape[1] > rep_idx else 0.0,
+                'predicted_party_prob_dem': proba[:, dem_idx] if proba.shape[1] > dem_idx else 0.0,
             })
             
             # Normalize probabilities (they should already sum to 1, but ensure)
@@ -227,6 +237,14 @@ def create_final_party_classification(df: pl.DataFrame) -> pl.DataFrame:
     """
     print("Creating final party classification...")
     
+    # Ensure prediction columns exist (fill with nulls if missing)
+    if 'predicted_party' not in df.columns:
+        df = df.with_columns(pl.lit(None).alias('predicted_party'))
+    if 'predicted_party_prob_rep' not in df.columns:
+        df = df.with_columns(pl.lit(None).alias('predicted_party_prob_rep'))
+    if 'predicted_party_prob_dem' not in df.columns:
+        df = df.with_columns(pl.lit(None).alias('predicted_party_prob_dem'))
+
     df = df.with_columns([
         pl.when(
             pl.col('primary_classification').is_in(['Republican', 'Democrat', 'Swing'])
